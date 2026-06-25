@@ -81,8 +81,8 @@ def run_scan(risk_manager: RiskManager):
             tf_data = all_tf_data.get(symbol, {})
 
             # Skip if any critical timeframe missing
-            if not tf_data.get(TIMEFRAMES["primary"]):
-                continue
+            if tf_data.get(TIMEFRAMES["primary"]) is None or tf_data.get(TIMEFRAMES["primary"]).empty:
+    return None
 
             try:
                 signal = analyze_symbol(symbol, tf_data)
