@@ -50,12 +50,16 @@ ET = pytz.timezone("America/New_York")
 
 
 # ─────────────────────────────
-# TRADING TIME
+# TRADING TIME (UPDATED ✅ PRE + REG + AFTER)
 # ─────────────────────────────
 
 def is_trading_time() -> bool:
     now_et = datetime.now(ET).time()
-    return dtime(9, 30) <= now_et <= dtime(15, 30)
+
+    pre_market_start = dtime(4, 0)
+    market_close     = dtime(20, 0)
+
+    return pre_market_start <= now_et <= market_close
 
 
 # ─────────────────────────────
@@ -84,7 +88,6 @@ def run_scan(risk_manager: RiskManager):
         for symbol in batch:
             tf_data = all_tf_data.get(symbol, {})
 
-            # ── FIXED SAFETY CHECK ──
             primary_df = tf_data.get(TIMEFRAMES["primary"])
             if primary_df is None or getattr(primary_df, "empty", True):
                 continue
@@ -140,7 +143,7 @@ def main():
             if is_trading_time():
 
                 if not market_was_open:
-                    logger.info("Market open — scanning begins")
+                    logger.info("Market session started (PRE/REG/AFTER)")
                     market_was_open = True
                     send_system_status(risk_manager.get_status())
 
