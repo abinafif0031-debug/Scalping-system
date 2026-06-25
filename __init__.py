@@ -1,1 +1,0 @@
-# Intraday Scalping System
