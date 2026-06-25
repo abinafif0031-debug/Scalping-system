@@ -23,19 +23,29 @@ from telegram.notifier import (
     send_signal, send_system_status, send_alert,
     send_startup_message, send_market_closed
 )
+import os
+import logging
+import pytz
+
+BASE_DIR = "/app"
+
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+LOG_FILE = os.path.join(LOG_DIR, "system.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("logs/system.log", mode="a"),
+        logging.FileHandler(LOG_FILE, mode="a"),
     ],
 )
+
 logger = logging.getLogger(__name__)
 
 ET = pytz.timezone("America/New_York")
-
 
 def is_trading_time() -> bool:
     """Check if current ET time is within trading hours."""
