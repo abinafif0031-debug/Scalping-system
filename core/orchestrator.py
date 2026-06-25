@@ -9,26 +9,27 @@ import logging
 import time
 from datetime import datetime, time as dtime
 import pytz
+import os
 
 from config.settings import (
     STOCK_UNIVERSE, SCAN_INTERVAL_SECONDS,
-    MARKET_OPEN_ET, MARKET_CLOSE_ET, NO_TRADE_AFTER,
-    BATCH_SIZE_TWELVE, TIMEFRAMES
+    TIMEFRAMES
 )
-from engines.market_data import load_all_timeframes, is_market_open
+from engines.market_data import load_all_timeframes
 from signals.scorer import analyze_symbol
 from signals.ai_filter import ai_filter_signal
 from risk.manager import RiskManager
 from telegram.notifier import (
-    send_signal, send_system_status, send_alert,
-    send_startup_message, send_market_closed
+    send_signal, send_system_status,
+    send_alert, send_startup_message,
+    send_market_closed
 )
-import os
-import logging
-import pytz
+
+# ─────────────────────────────
+# LOGGING (FIXED)
+# ─────────────────────────────
 
 BASE_DIR = "/app"
-
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -47,16 +48,22 @@ logger = logging.getLogger(__name__)
 
 ET = pytz.timezone("America/New_York")
 
-def is_trading_time() -> bool:
-    """Check if current ET time is within trading hours."""
-    now_et = datetime.now(ET).time()
-    open_t  = dtime(9, 30)
-    close_t = dtime(15, 30)   # no new trades after 15:30
-    return open_t <= now_et <= close_t
 
+# ─────────────────────────────
+# TRADING TIME
+# ─────────────────────────────
+
+def is_trading_time() -> bool:
+    now_et = datetime.now(ET).time()
+    return dtime(9, 30) <= now_et <= dtime(15, 30)
+
+
+# ─────────────────────────────
+# SCAN ENGINE
+# ─────────────────────────────
 
 def run_scan(risk_manager: RiskManager):
-    """One full scan of the stock universe."""
+
     can_trade, reason = risk_manager.can_trade()
     if not can_trade:
         logger.info(f"Scan skipped — {reason}")
@@ -65,25 +72,23 @@ def run_scan(risk_manager: RiskManager):
     logger.info(f"Starting scan of {len(STOCK_UNIVERSE)} symbols...")
     signals_sent = 0
 
-    # Process in batches to respect API limits
-    for i in range(0, len(STOCK_UNIVERSE), BATCH_SIZE_TWELVE):
-        batch = STOCK_UNIVERSE[i : i + BATCH_SIZE_TWELVE]
+    for i in range(0, len(STOCK_UNIVERSE), 10):
+        batch = STOCK_UNIVERSE[i:i + 10]
 
-        # ── Fetch all timeframes for this batch ──
         try:
             all_tf_data = load_all_timeframes(batch)
         except Exception as e:
-            logger.error(f"Data fetch error for batch {batch}: {e}")
+            logger.error(f"Data fetch error: {e}")
             continue
 
-        # ── Analyze each symbol ──
         for symbol in batch:
             tf_data = all_tf_data.get(symbol, {})
 
-primary_df = tf_data.get(TIMEFRAMES["primary"])
+            # ── FIXED SAFETY CHECK ──
+            primary_df = tf_data.get(TIMEFRAMES["primary"])
+            if primary_df is None or getattr(primary_df, "empty", True):
+                continue
 
-if primary_df is None or primary_df.empty:
-    return None
             try:
                 signal = analyze_symbol(symbol, tf_data)
             except Exception as e:
@@ -93,74 +98,66 @@ if primary_df is None or primary_df.empty:
             if signal is None:
                 continue
 
-            logger.info(f"Signal found: {symbol} {signal.direction} score={signal.confidence:.1f}")
+            logger.info(f"Signal: {symbol} {signal.direction} score={signal.confidence:.1f}")
 
-            # ── AI Filter ──
             approved, ai_reason = ai_filter_signal(signal)
             if not approved:
-                logger.info(f"AI rejected {symbol}: {ai_reason}")
-                send_alert(f"AI rejected {symbol}: {ai_reason}", "INFO")
+                logger.info(f"AI rejected {symbol}")
                 continue
 
-            # ── Risk gate (re-check before sending) ──
             can_trade, reason = risk_manager.can_trade()
             if not can_trade:
-                logger.info(f"Risk gate: {reason}")
                 break
 
-            # ── Send to Telegram ──
-            sent = send_signal(signal, ai_reason)
-            if sent:
+            if send_signal(signal, ai_reason):
                 risk_manager.register_trade()
                 signals_sent += 1
-                logger.info(f"✅ Signal sent: {symbol} {signal.direction}")
 
-            # Stay under trade limit
             can_trade, _ = risk_manager.can_trade()
             if not can_trade:
                 break
 
-        # Check limit between batches too
-        can_trade, _ = risk_manager.can_trade()
-        if not can_trade:
-            break
-
     logger.info(f"Scan complete — {signals_sent} signals sent")
 
 
+# ─────────────────────────────
+# MAIN LOOP
+# ─────────────────────────────
+
 def main():
-    """Main entry point — runs forever."""
-    import os
-    os.makedirs("logs", exist_ok=True)
+
+    os.makedirs("/app/logs", exist_ok=True)
 
     risk_manager = RiskManager()
     send_startup_message()
 
     logger.info("=== Intraday Scalping System STARTED ===")
+
     market_was_open = False
 
     while True:
         try:
             if is_trading_time():
+
                 if not market_was_open:
                     logger.info("Market open — scanning begins")
                     market_was_open = True
-                    status = risk_manager.get_status()
-                    send_system_status(status)
+                    send_system_status(risk_manager.get_status())
 
                 run_scan(risk_manager)
 
             else:
                 if market_was_open:
-                    logger.info("Market closed — going to standby")
+                    logger.info("Market closed")
                     market_was_open = False
                     send_market_closed()
 
             time.sleep(SCAN_INTERVAL_SECONDS)
 
         except KeyboardInterrupt:
-            logger.info("System stopped by user")
+            logger.info("Stopped by user")
             break
+
         except Exception as e:
             logger.error(f"Main loop error: {e}", exc_info=True)
             send_alert(f"Main loop error: {e}", "ERROR")
