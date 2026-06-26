@@ -21,6 +21,7 @@ from config.settings import (
     HOLD_INTRADAY_MIN, HOLD_INTRADAY_MAX,
     TIMEFRAMES
 )
+from engines.market_data import get_current_price
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +281,10 @@ def analyze_symbol(
     if breakdown.total < MIN_SCORE_TO_TRADE:
         return None
 
-    entry = stats_5m["close"]
+    from engines.market_data import get_current_price
+live_price = get_current_price(symbol)
+entry = live_price if live_price else stats_5m["close"]
+
     atr   = stats_5m["atr"]
     sl, tp = calc_sl_tp(entry, atr, direction, r_ratio=2.0)
 
