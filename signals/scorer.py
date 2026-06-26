@@ -104,9 +104,8 @@ def detect_regime(df_1h: pd.DataFrame) -> str:
     ema_trend_down = float(last["ema_fast"]) < float(prev["ema_fast"])
     price_vs_ema   = float(last["close"]) > float(last["ema_slow"])
 
-    # Sideways: EMA essentially flat (< 0.5% change over 5 bars)
     ema_change_pct = abs(float(last["ema_fast"]) - float(prev["ema_fast"])) / float(prev["ema_fast"])
-    if ema_change_pct < 0.002:   # < 0.2% EMA movement = sideways
+    if ema_change_pct < 0.002:
         return "sideways"
 
     if ema_trend_up and price_vs_ema:
@@ -136,13 +135,11 @@ def _score_momentum(stats_5m: dict, stats_1m: dict) -> float:
     rsi_5m = stats_5m.get("rsi", 50)
     rsi_1m = stats_1m.get("rsi", 50)
 
-    # RSI momentum: 50–70 bullish zone (not overbought)
     if 50 < rsi_5m < 70:            score += 8
-    elif 45 < rsi_5m <= 50:         score += 3   # borderline
+    elif 45 < rsi_5m <= 50:         score += 3
 
-    # MACD confirmation
     if stats_5m.get("macd_bull"):   score += 9
-    if rsi_1m > rsi_5m:             score += 4   # momentum strengthening
+    if rsi_1m > rsi_5m:             score += 4
     if stats_5m.get("ema_cross_up"): score += 4
 
     return min(score, 25.0)
@@ -173,12 +170,10 @@ def _score_volatility(stats_5m: dict, entry: float) -> float:
         return 0.0
 
     atr_pct = atr / close
-    # Ideal ATR: 0.3%–2% of price (tradeable range)
-    if 0.003 <= atr_pct <= 0.02:  score += 20
+    if 0.003 <= atr_pct <= 0.02:   score += 20
     elif 0.002 <= atr_pct < 0.003: score += 12
-    elif 0.02 < atr_pct <= 0.04:  score += 8
+    elif 0.02 < atr_pct <= 0.04:   score += 8
 
-    # Bonus: clean price structure (close near high of bar)
     return min(score + 5, 25.0) if score > 0 else 0.0
 
 
@@ -208,9 +203,6 @@ def calc_sl_tp(
 # ──────────────────────────────────────────────
 
 def select_trade_duration(score: float, macd_hist_increasing: bool) -> Tuple[str, int, int]:
-    """
-    Returns (label, min_minutes, max_minutes)
-    """
     if score >= 92 and macd_hist_increasing:
         return "⚡ Fast Scalp", HOLD_FAST_MAX // 2, HOLD_FAST_MAX
     elif score >= 82:
@@ -229,21 +221,17 @@ def analyze_symbol(
 ) -> Optional[TradeSignal]:
     """
     Returns a TradeSignal if score >= 75, else None.
-
-    tf_data keys: "1min", "5min", "15min", "1h"
     """
     df_1m  = tf_data.get(TIMEFRAMES["entry"])
     df_5m  = tf_data.get(TIMEFRAMES["primary"])
     df_15m = tf_data.get(TIMEFRAMES["trend"])
     df_1h  = tf_data.get(TIMEFRAMES["regime"])
 
-    # Need at least 5m and 15m
     if df_5m is None or len(df_5m) < 25:
         return None
     if df_15m is None or len(df_15m) < 20:
         return None
 
-    # Add indicators to all timeframes
     df_5m_ind  = add_indicators(df_5m)
     df_15m_ind = add_indicators(df_15m)
     df_1m_ind  = add_indicators(df_1m) if df_1m is not None and len(df_1m) > 10 else None
@@ -256,21 +244,16 @@ def analyze_symbol(
     if not stats_5m or not stats_15m:
         return None
 
-    # Regime
     regime = detect_regime(df_1h_ind) if df_1h_ind is not None else "unknown"
 
-    # ❌ No trade in sideways market
     if regime == "sideways":
         return None
 
-    # ❌ 15m must confirm 5m direction
     if stats_5m.get("ema_bull") != stats_15m.get("ema_bull"):
-        return None  # conflicting timeframes
+        return None
 
-    # Determine direction
     direction = "LONG" if stats_5m.get("ema_bull") else "SHORT"
 
-    # Score components
     breakdown = ScoreBreakdown(
         trend      = _score_trend(stats_5m, stats_15m, regime),
         momentum   = _score_momentum(stats_5m, stats_1m),
@@ -281,18 +264,14 @@ def analyze_symbol(
     if breakdown.total < MIN_SCORE_TO_TRADE:
         return None
 
-    from engines.market_data import get_current_price
     live_price = get_current_price(symbol)
     entry = live_price if live_price else stats_5m["close"]
-
-
     atr   = stats_5m["atr"]
     sl, tp = calc_sl_tp(entry, atr, direction, r_ratio=2.0)
 
     macd_increasing = float(df_5m_ind.iloc[-1].get("macd_hist", 0)) > float(df_5m_ind.iloc[-2].get("macd_hist", 0))
     duration_label, hold_min, hold_max = select_trade_duration(breakdown.total, macd_increasing)
 
-    # Timeframe confirmation string
     tf_parts = []
     if stats_15m.get("ema_bull") == stats_5m.get("ema_bull"):
         tf_parts.append("15m✅")
@@ -302,7 +281,6 @@ def analyze_symbol(
         tf_parts.append("1m✅")
     tf_conf = " | ".join(tf_parts)
 
-    # Reason summary
     reasons = []
     if stats_5m.get("ema_cross_up"): reasons.append("EMA cross")
     if stats_5m.get("above_vwap"):   reasons.append("above VWAP")
