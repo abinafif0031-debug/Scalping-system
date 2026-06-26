@@ -74,14 +74,14 @@ SCORE_WEIGHTS = {
     "volume":    25,
     "volatility": 25,
 }
-MIN_SCORE_TO_TRADE = 75
+MIN_SCORE_TO_TRADE = 78
 
 # ──────────────────────────────────────────────
 # RISK MANAGEMENT
 # ──────────────────────────────────────────────
 RISK_PER_TRADE_PCT  = 0.01    # 1% max risk per trade
 MAX_DAILY_LOSS_PCT  = 0.02    # -2% → stop all trading
-MAX_TRADES_PER_DAY  = 8
+MAX_TRADES_PER_DAY  = 16
 TAKE_PROFIT_R_MIN   = 1.5
 TAKE_PROFIT_R_MAX   = 3.0
 TRAILING_STOP_AFTER = 1.0     # activate trailing after +1R
