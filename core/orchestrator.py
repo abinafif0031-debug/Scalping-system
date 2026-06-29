@@ -72,6 +72,9 @@ def get_session() -> str:
 # ─────────────────────────────
 # SCAN ENGINE
 # ─────────────────────────────
+
+
+def run_scan(risk_manager: RiskManager):
 session = get_session()
 if session == "closed":
     return
@@ -88,9 +91,6 @@ if session == "pre":
     min_score = MIN_SCORE_PRE_MARKET
 else:
     min_score = MIN_SCORE_OPEN_MARKET
-
-def run_scan(risk_manager: RiskManager):
-
     can_trade, reason = risk_manager.can_trade()
     if not can_trade:
         logger.info(f"Scan skipped — {reason}")
