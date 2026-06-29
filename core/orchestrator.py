@@ -72,6 +72,22 @@ def get_session() -> str:
 # ─────────────────────────────
 # SCAN ENGINE
 # ─────────────────────────────
+session = get_session()
+if session == "closed":
+    return
+
+# حد الصفقات حسب الجلسة
+from config.settings import (
+    MAX_TRADES_PRE_MARKET, MAX_TRADES_OPEN_MARKET,
+    MIN_SCORE_PRE_MARKET, MIN_SCORE_OPEN_MARKET
+)
+
+if session == "pre":
+    if risk_manager.state.pre_market_trades >= MAX_TRADES_PRE_MARKET:
+        return
+    min_score = MIN_SCORE_PRE_MARKET
+else:
+    min_score = MIN_SCORE_OPEN_MARKET
 
 def run_scan(risk_manager: RiskManager):
 
