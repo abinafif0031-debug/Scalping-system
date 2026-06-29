@@ -1,11 +1,5 @@
 """
 RISK MANAGEMENT ENGINE (FIXED & STABLE)
-- Daily loss limit tracker
-- Max trades per day
-- Session-based tracking (pre/open)
-- Consecutive loss guard
-- Position sizing
-- State persistence (safe)
 """
 
 import json
@@ -34,16 +28,13 @@ logger = logging.getLogger(__name__)
 class DailyState:
     date: str = ""
 
-    # trades
     trades_taken: int = 0
     pre_market_trades: int = 0
     open_market_trades: int = 0
 
-    # performance
     daily_pnl_pct: float = 0.0
     consecutive_losses: int = 0
 
-    # control
     trading_halted: bool = False
     halt_reason: str = ""
 
@@ -168,25 +159,21 @@ class RiskManager:
         return round(risk_amount / sl_distance, 2)
 
     # ──────────────────────────────
-    # STATUS
+    # STATUS (FIXED INDENTATION + INSIDE CLASS)
     # ──────────────────────────────
 
-def get_status(self) -> dict:
-    self.state.reset_if_new_day()
+    def get_status(self) -> dict:
+        self.state.reset_if_new_day()
 
-    return {
-        "date": self.state.date,
-        "trades_taken": self.state.trades_taken,
-        "pre_market_trades": self.state.pre_market_trades,
-        "open_market_trades": self.state.open_market_trades,
-        "trades_remaining": MAX_TRADES_PER_DAY - self.state.trades_taken,
-        "daily_pnl_pct": f"{self.state.daily_pnl_pct:.2%}",
-        "consecutive_losses": self.state.consecutive_losses,
+        return {
+            "date": self.state.date,
+            "trades_taken": self.state.trades_taken,
+            "pre_market_trades": self.state.pre_market_trades,
+            "open_market_trades": self.state.open_market_trades,
+            "trades_remaining": MAX_TRADES_PER_DAY - self.state.trades_taken,
+            "daily_pnl_pct": f"{self.state.daily_pnl_pct:.2%}",
+            "consecutive_losses": self.state.consecutive_losses,
 
-        # 🔥 FIX REQUIRED KEYS (for notifier)
-        "trading_allowed": not self.state.trading_halted,
-        "halt_reason": self.state.halt_reason,
-
-        # optional safety
-        "trading_halted": self.state.trading_halted,
-    }
+            "trading_allowed": not self.state.trading_halted,
+            "halt_reason": self.state.halt_reason,
+        }
