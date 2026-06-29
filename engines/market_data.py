@@ -27,7 +27,7 @@ _request_lock = threading.Lock()
 _last_request_time = 0
 
 # safe for 144 RPM (with buffer)
-MIN_INTERVAL = 0.45  
+MIN_INTERVAL = 0.6  
 
 
 def throttle_requests():
@@ -41,6 +41,7 @@ def throttle_requests():
             time.sleep(MIN_INTERVAL - diff)
 
         _last_request_time = time.time()
+        time.sleep(0.05)  # ⭐ إضافة صغيرة تمنع burst المفاجئ
 
 
 # ──────────────────────────────────────────────
@@ -92,12 +93,16 @@ def fetch_batch_candles(symbols: List[str], interval: str, outputsize: int = 50)
 
     try:
         resp = requests.get(url, params=params, timeout=15)
+        time.sleep(0.15)
 
         # ❗ FIX: handle 429 cleanly without retry storm
-        if resp.status_code == 429:
-            logger.warning(f"429 hit → cooling down API")
-            time.sleep(1.5)
-            return {}
+if resp.status_code == 429:
+    logger.warning("429 hit → backing off safely")
+
+    # 🔥 backoff ذكي
+    time.sleep(2)
+    return {}
+   
 
         resp.raise_for_status()
         data = resp.json()
