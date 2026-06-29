@@ -60,7 +60,14 @@ def is_trading_time() -> bool:
     market_close     = dtime(20, 0)
 
     return pre_market_start <= now_et <= market_close
-
+def get_session() -> str:
+    """Returns: 'pre', 'open', or 'closed'"""
+    now_et = datetime.now(ET).time()
+    if dtime(8, 0) <= now_et < dtime(9, 30):
+        return "pre"
+    if dtime(9, 30) <= now_et <= dtime(15, 30):
+        return "open"
+    return "closed"
 
 # ─────────────────────────────
 # SCAN ENGINE
