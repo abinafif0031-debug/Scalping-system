@@ -81,7 +81,7 @@ MIN_SCORE_TO_TRADE = 78
 # ──────────────────────────────────────────────
 RISK_PER_TRADE_PCT  = 0.01    # 1% max risk per trade
 MAX_DAILY_LOSS_PCT  = 0.02    # -2% → stop all trading
-MAX_TRADES_PER_DAY  = 16
+MAX_TRADES_PER_DAY  = 21
 TAKE_PROFIT_R_MIN   = 1.5
 TAKE_PROFIT_R_MAX   = 3.0
 TRAILING_STOP_AFTER = 1.0     # activate trailing after +1R
@@ -117,3 +117,18 @@ NO_TRADE_AFTER  = "15:30"   # no new positions in last 30 min
 LOG_DIR        = "logs"
 BACKTEST_DIR   = "backtest_results"
 STATE_FILE     = "logs/system_state.json"
+
+# Trading sessions
+PRE_MARKET_START_ET  = "04:35"
+PRE_MARKET_END_ET    = "09:29"
+MARKET_OPEN_ET       = "09:30"
+NO_TRADE_AFTER       = "15:30"
+
+# Limits per session
+MAX_TRADES_PRE_MARKET  = 3
+MAX_TRADES_OPEN_MARKET = 18   # حسب الحد الكلي عندك
+
+# Score per session
+MIN_SCORE_PRE_MARKET   = 88
+MIN_SCORE_OPEN_MARKET  = 78
+
