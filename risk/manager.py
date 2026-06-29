@@ -1,159 +1,187 @@
 """
-RISK MANAGEMENT ENGINE
+RISK MANAGEMENT ENGINE (FIXED & STABLE)
 - Daily loss limit tracker
 - Max trades per day
+- Session-based tracking (pre/open)
 - Consecutive loss guard
 - Position sizing
-- State persistence
+- State persistence (safe)
 """
 
 import json
 import logging
 import os
-from dataclasses import dataclass, asdict, field
-from typing import Optional
+from dataclasses import dataclass, asdict
+from typing import Tuple
 from datetime import date
 
 from config.settings import (
-    MAX_DAILY_LOSS_PCT, MAX_TRADES_PER_DAY,
-    MAX_CONSECUTIVE_LOSSES, RISK_PER_TRADE_PCT,
+    MAX_DAILY_LOSS_PCT,
+    MAX_TRADES_PER_DAY,
+    MAX_CONSECUTIVE_LOSSES,
+    RISK_PER_TRADE_PCT,
     STATE_FILE
 )
 
 logger = logging.getLogger(__name__)
 
 
+# ──────────────────────────────────────────────
+# STATE
+# ──────────────────────────────────────────────
+
 @dataclass
 class DailyState:
-    date:               str   = ""
-    trades_taken:       int   = 0
-    daily_pnl_pct:      float = 0.0
-    consecutive_losses: int   = 0
-    trading_halted:     bool  = False
-    halt_reason:        str   = ""
+    date: str = ""
+
+    # trades
+    trades_taken: int = 0
+    pre_market_trades: int = 0
+    open_market_trades: int = 0
+
+    # performance
+    daily_pnl_pct: float = 0.0
+    consecutive_losses: int = 0
+
+    # control
+    trading_halted: bool = False
+    halt_reason: str = ""
 
     def reset_if_new_day(self):
         today = str(date.today())
+
         if self.date != today:
-            self.date               = today
-            self.trades_taken       = 0
-            self.daily_pnl_pct      = 0.0
+            self.date = today
+            self.trades_taken = 0
+            self.pre_market_trades = 0
+            self.open_market_trades = 0
+            self.daily_pnl_pct = 0.0
             self.consecutive_losses = 0
-            self.trading_halted     = False
-            self.halt_reason        = ""
+            self.trading_halted = False
+            self.halt_reason = ""
+
             logger.info(f"New trading day: {today} — state reset")
 
 
+# ──────────────────────────────────────────────
+# RISK MANAGER
+# ──────────────────────────────────────────────
+
 class RiskManager:
+
     def __init__(self):
         self.state = DailyState()
         self._load_state()
         self.state.reset_if_new_day()
 
-    # ──────────────────────────────────────────
-    # State persistence
-    # ──────────────────────────────────────────
+    # ──────────────────────────────
+    # LOAD / SAVE
+    # ──────────────────────────────
 
     def _load_state(self):
         try:
             if os.path.exists(STATE_FILE):
-                with open(STATE_FILE) as f:
+                with open(STATE_FILE, "r") as f:
                     data = json.load(f)
                 self.state = DailyState(**data)
         except Exception as e:
             logger.warning(f"Could not load state: {e}")
 
     def _save_state(self):
-        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         try:
+            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
             with open(STATE_FILE, "w") as f:
                 json.dump(asdict(self.state), f, indent=2)
         except Exception as e:
             logger.error(f"Could not save state: {e}")
 
-    # ──────────────────────────────────────────
-    # Gate checks
-    # ──────────────────────────────────────────
+    # ──────────────────────────────
+    # TRADE CHECK
+    # ──────────────────────────────
 
-    def can_trade(self) -> tuple[bool, str]:
-        """Returns (allowed, reason)"""
+    def can_trade(self) -> Tuple[bool, str]:
         self.state.reset_if_new_day()
 
         if self.state.trading_halted:
             return False, f"Trading halted: {self.state.halt_reason}"
 
         if self.state.trades_taken >= MAX_TRADES_PER_DAY:
-            return False, f"Max trades reached ({MAX_TRADES_PER_DAY}/day)"
+            return False, "Max trades reached"
 
         if self.state.daily_pnl_pct <= -MAX_DAILY_LOSS_PCT:
-            self._halt(f"Daily loss limit hit ({self.state.daily_pnl_pct:.2%})")
+            self._halt("Daily loss limit hit")
             return False, self.state.halt_reason
 
         if self.state.consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
-            self._halt(f"{MAX_CONSECUTIVE_LOSSES} consecutive losses")
+            self._halt("Consecutive losses limit hit")
             return False, self.state.halt_reason
 
         return True, "OK"
 
     def _halt(self, reason: str):
         self.state.trading_halted = True
-        self.state.halt_reason    = reason
+        self.state.halt_reason = reason
         self._save_state()
         logger.warning(f"⛔ Trading HALTED: {reason}")
 
-    # ──────────────────────────────────────────
-    # Trade lifecycle
-    # ──────────────────────────────────────────
+    # ──────────────────────────────
+    # TRADE TRACKING
+    # ──────────────────────────────
 
-    def register_trade(self):
-        """Call when a signal is sent to Telegram."""
+    def register_trade(self, session: str = "open"):
         self.state.trades_taken += 1
+
+        if session == "pre":
+            self.state.pre_market_trades += 1
+        else:
+            self.state.open_market_trades += 1
+
         self._save_state()
 
     def register_result(self, pnl_pct: float, won: bool):
-        """Update after trade closes (manual or tracked)."""
         self.state.daily_pnl_pct += pnl_pct
+
         if won:
             self.state.consecutive_losses = 0
         else:
             self.state.consecutive_losses += 1
+
         self._save_state()
-        logger.info(f"Trade result: {'WIN' if won else 'LOSS'} | PnL: {pnl_pct:.2%} | Daily: {self.state.daily_pnl_pct:.2%}")
 
-    # ──────────────────────────────────────────
-    # Position sizing
-    # ──────────────────────────────────────────
+        logger.info(
+            f"Trade result: {'WIN' if won else 'LOSS'} | "
+            f"PnL: {pnl_pct:.2%} | "
+            f"Daily: {self.state.daily_pnl_pct:.2%}"
+        )
 
-    def calc_position_size(
-        self,
-        account_value: float,
-        entry: float,
-        stop_loss: float
-    ) -> float:
-        """
-        Returns number of shares to buy.
-        Risk = account_value × RISK_PER_TRADE_PCT
-        Shares = Risk / |entry - stop_loss|
-        """
+    # ──────────────────────────────
+    # POSITION SIZING
+    # ──────────────────────────────
+
+    def calc_position_size(self, account_value: float, entry: float, stop_loss: float) -> float:
         risk_amount = account_value * RISK_PER_TRADE_PCT
         sl_distance = abs(entry - stop_loss)
+
         if sl_distance == 0:
             return 0.0
-        shares = risk_amount / sl_distance
-        return round(shares, 2)
 
-    # ──────────────────────────────────────────
-    # Status report
-    # ──────────────────────────────────────────
+        return round(risk_amount / sl_distance, 2)
+
+    # ──────────────────────────────
+    # STATUS
+    # ──────────────────────────────
 
     def get_status(self) -> dict:
         self.state.reset_if_new_day()
+
         return {
-            "date":               self.state.date,
-            "trades_taken":       self.state.trades_taken,
-            "trades_remaining":   MAX_TRADES_PER_DAY - self.state.trades_taken,
-            "daily_pnl_pct":      f"{self.state.daily_pnl_pct:.2%}",
-            "consecutive_losses": self.state.consecutive_losses,
-            "trading_allowed":    not self.state.trading_halted,
-            "halt_reason":        self.state.halt_reason,
+            "date": self.state.date,
+            "trades_taken": self.state.trades_taken,
+            "pre_market_trades": self.state.pre_market_trades,
+            "open_market_trades": self.state.open_market_trades,
+            "remaining": MAX_TRADES_PER_DAY - self.state.trades_taken,
+            "pnl": f"{self.state.daily_pnl_pct:.2%}",
+            "losses": self.state.consecutive_losses,
+            "halted": self.state.trading_halted,
+            "reason": self.state.halt_reason,
         }
