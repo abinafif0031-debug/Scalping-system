@@ -171,7 +171,7 @@ class RiskManager:
     # STATUS
     # ──────────────────────────────
 
-   def get_status(self) -> dict:
+def get_status(self) -> dict:
     self.state.reset_if_new_day()
 
     return {
