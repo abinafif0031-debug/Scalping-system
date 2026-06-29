@@ -1,7 +1,7 @@
 """
 MAIN ORCHESTRATOR
 - Scans stock universe every 2 minutes
-- Batches API calls to stay under rate limits
+- Batches API calls safely under rate limits
 - Applies full pipeline: data → indicators → score → AI filter → telegram
 """
 
@@ -13,8 +13,11 @@ import os
 
 from config.settings import (
     STOCK_UNIVERSE, SCAN_INTERVAL_SECONDS,
-    TIMEFRAMES
+    TIMEFRAMES,
+    MAX_TRADES_PRE_MARKET, MAX_TRADES_OPEN_MARKET,
+    MIN_SCORE_PRE_MARKET, MIN_SCORE_OPEN_MARKET
 )
+
 from engines.market_data import load_all_timeframes
 from signals.scorer import analyze_symbol
 from signals.ai_filter import ai_filter_signal
@@ -26,7 +29,7 @@ from telegram.notifier import (
 )
 
 # ─────────────────────────────
-# LOGGING (FIXED)
+# LOGGING
 # ─────────────────────────────
 
 BASE_DIR = "/app"
@@ -50,29 +53,29 @@ ET = pytz.timezone("America/New_York")
 
 
 # ─────────────────────────────
-# TRADING TIME (UPDATED ✅ PRE + REG + AFTER)
+# SESSION
 # ─────────────────────────────
 
 def is_trading_time() -> bool:
     now_et = datetime.now(ET).time()
+    return dtime(4, 0) <= now_et <= dtime(20, 0)
 
-    pre_market_start = dtime(4, 0)
-    market_close     = dtime(20, 0)
 
-    return pre_market_start <= now_et <= market_close
 def get_session() -> str:
-    """Returns: 'pre', 'open', or 'closed'"""
     now_et = datetime.now(ET).time()
+
     if dtime(8, 0) <= now_et < dtime(9, 30):
         return "pre"
+
     if dtime(9, 30) <= now_et <= dtime(15, 30):
         return "open"
+
     return "closed"
 
-# ─────────────────────────────
-# SCAN ENGINE
-# ─────────────────────────────
 
+# ─────────────────────────────
+# SCAN ENGINE (FIXED)
+# ─────────────────────────────
 
 def run_scan(risk_manager: RiskManager):
 
@@ -82,16 +85,16 @@ def run_scan(risk_manager: RiskManager):
         logger.info("Market closed — scan skipped")
         return
 
-    from config.settings import (
-        MAX_TRADES_PRE_MARKET, MAX_TRADES_OPEN_MARKET,
-        MIN_SCORE_PRE_MARKET, MIN_SCORE_OPEN_MARKET
-    )
-
+    # session limits
     if session == "pre":
         if risk_manager.state.pre_market_trades >= MAX_TRADES_PRE_MARKET:
+            logger.info("Pre-market limit reached")
             return
         min_score = MIN_SCORE_PRE_MARKET
     else:
+        if risk_manager.state.open_market_trades >= MAX_TRADES_OPEN_MARKET:
+            logger.info("Open market limit reached")
+            return
         min_score = MIN_SCORE_OPEN_MARKET
 
     can_trade, reason = risk_manager.can_trade()
@@ -102,16 +105,25 @@ def run_scan(risk_manager: RiskManager):
     logger.info(f"Starting scan of {len(STOCK_UNIVERSE)} symbols...")
     signals_sent = 0
 
+    # ─────────────────────────────
+    # MAIN LOOP
+    # ─────────────────────────────
     for i in range(0, len(STOCK_UNIVERSE), 10):
+
         batch = STOCK_UNIVERSE[i:i + 10]
 
         try:
             all_tf_data = load_all_timeframes(batch)
         except Exception as e:
             logger.error(f"Data fetch error: {e}")
+            time.sleep(1)  # 🔥 safe cooldown
             continue
 
+        # 🔥 small pause between batches (CRITICAL FIX for 429)
+        time.sleep(0.25)
+
         for symbol in batch:
+
             tf_data = all_tf_data.get(symbol, {})
 
             primary_df = tf_data.get(TIMEFRAMES["primary"])
@@ -127,21 +139,26 @@ def run_scan(risk_manager: RiskManager):
             if signal is None:
                 continue
 
-            logger.info(f"Signal: {symbol} {signal.direction} score={signal.confidence:.1f}")
+            logger.info(
+                f"Signal: {symbol} {signal.direction} score={signal.confidence:.1f}"
+            )
 
+            # AI filter
             approved, ai_reason = ai_filter_signal(signal)
             if not approved:
-                logger.info(f"AI rejected {symbol}")
                 continue
 
+            # risk check
             can_trade, reason = risk_manager.can_trade()
             if not can_trade:
                 break
 
+            # send signal
             if send_signal(signal, ai_reason):
                 risk_manager.register_trade()
                 signals_sent += 1
 
+            # re-check risk
             can_trade, _ = risk_manager.can_trade()
             if not can_trade:
                 break
@@ -166,6 +183,7 @@ def main():
 
     while True:
         try:
+
             if is_trading_time():
 
                 if not market_was_open:
