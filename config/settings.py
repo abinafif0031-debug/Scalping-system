@@ -2,11 +2,10 @@
 SYSTEM CONFIGURATION — Intraday Scalping System
 """
 import os
-from dataclasses import dataclass, field
 from typing import List
 
 # ──────────────────────────────────────────────
-# API KEYS (set via environment variables)
+# API KEYS
 # ──────────────────────────────────────────────
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 FINNHUB_API_KEY     = os.getenv("FINNHUB_API_KEY", "")
@@ -18,31 +17,31 @@ TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
 # STOCK UNIVERSE
 # ──────────────────────────────────────────────
 STOCK_UNIVERSE: List[str] = [
-    "AAPL", "NVDA", "TSLA", "AMD", "AVGO", "QCOM", "MU", "ORCL", "ADBE", "CRM",
-    "NOW", "PANW", "CRWD", "SNOW", "ZS", "OKTA", "AMAT", "LRCX", "KLAC", "NXPI",
-    "ON", "GFS", "MPWR", "TER", "TXN", "SMCI", "ARM", "ASML", "ISRG", "SYK",
-    "ABT", "JNJ", "TMO", "DHR", "BSX", "MDT", "ZTS", "PG", "HD", "SBUX",
-    "NKE", "LULU", "TJX", "AME", "ETN", "EMR", "ITW", "UNP", "UPS", "XPO",
-    "JBHT", "CHRW", "ODFL", "EXPD", "ROK", "DOV", "PH", "V", "MA", "SPGI",
-    "MSCI", "MCO", "FICO", "CDNS", "SNPS", "ANET", "CSCO", "NTAP", "VRSN",
-    "FFIV", "GLW", "TEL", "APH", "KEYS", "GRMN", "MSI", "EQIX", "WELL", "WM",
-    "RSG", "GWW", "FAST", "CARR", "OTIS", "TT", "PWR", "PPG", "SHW", "ECL",
-    "CL", "CLX", "HSY", "KMB", "MCK", "CIEN", "LLY", "MRK", "GILD", "VRTX",
-    "ALNY", "NBIX", "INCY", "DXCM", "IDXX", "ZBRA", "WST", "WAT", "BDX",
-    "EW", "A", "APD", "LIN", "XOM", "CVX", "SLB",
-    "ALB", "ALGN", "AOS", "APOG", "AR", "ARWR", "AZTA", "AZO", "BBY",
-    "BIO", "BIIB", "BKTI", "BLD", "BLDR",
-    "SPY", "QQQ",
+    "AAPL","NVDA","TSLA","AMD","AVGO","QCOM","MU","ORCL","ADBE","CRM",
+    "NOW","PANW","CRWD","SNOW","ZS","OKTA","AMAT","LRCX","KLAC","NXPI",
+    "ON","GFS","MPWR","TER","TXN","SMCI","ARM","ASML","ISRG","SYK",
+    "ABT","JNJ","TMO","DHR","BSX","MDT","ZTS","PG","HD","SBUX",
+    "NKE","LULU","TJX","AME","ETN","EMR","ITW","UNP","UPS","XPO",
+    "JBHT","CHRW","ODFL","EXPD","ROK","DOV","PH","V","MA","SPGI",
+    "MSCI","MCO","FICO","CDNS","SNPS","ANET","CSCO","NTAP","VRSN",
+    "FFIV","GLW","TEL","APH","KEYS","GRMN","MSI","EQIX","WELL","WM",
+    "RSG","GWW","FAST","CARR","OTIS","TT","PWR","PPG","SHW","ECL",
+    "CL","CLX","HSY","KMB","MCK","CIEN","LLY","MRK","GILD","VRTX",
+    "ALNY","NBIX","INCY","DXCM","IDXX","ZBRA","WST","WAT","BDX",
+    "EW","A","APD","LIN","XOM","CVX","SLB",
+    "ALB","ALGN","AOS","APOG","AR","ARWR","AZTA","AZO","BBY",
+    "BIO","BIIB","BKTI","BLD","BLDR",
+    "SPY","QQQ",
 ]
 
 # ──────────────────────────────────────────────
-# TIMEFRAMES
+# TIMEFRAMES (UNCHANGED)
 # ──────────────────────────────────────────────
 TIMEFRAMES = {
-    "entry":   "1min",   # entry timing only
-    "primary": "5min",   # PRIMARY signal
-    "trend":   "15min",  # trend confirmation
-    "regime":  "1h",     # market regime
+    "entry":   "1min",
+    "primary": "5min",
+    "trend":   "15min",
+    "regime":  "1h",
 }
 
 CANDLE_COUNT = {
@@ -53,42 +52,42 @@ CANDLE_COUNT = {
 }
 
 # ──────────────────────────────────────────────
-# SIGNAL ENGINE
+# SIGNAL ENGINE (UNCHANGED)
 # ──────────────────────────────────────────────
-EMA_FAST        = 9
-EMA_SLOW        = 21
-RSI_PERIOD      = 14
-MACD_FAST       = 12
-MACD_SLOW       = 26
-MACD_SIGNAL     = 9
-ATR_PERIOD      = 14
-VOLUME_MA_LEN   = 20
-VWAP_ANCHOR     = "D"  # daily VWAP reset
+EMA_FAST      = 9
+EMA_SLOW      = 21
+RSI_PERIOD    = 14
+MACD_FAST     = 12
+MACD_SLOW     = 26
+MACD_SIGNAL   = 9
+ATR_PERIOD    = 14
+VOLUME_MA_LEN = 20
+VWAP_ANCHOR   = "D"
 
 # ──────────────────────────────────────────────
-# SCORING WEIGHTS (total = 100)
+# SCORING (UNCHANGED)
 # ──────────────────────────────────────────────
 SCORE_WEIGHTS = {
-    "trend":     25,
-    "momentum":  25,
-    "volume":    25,
+    "trend": 25,
+    "momentum": 25,
+    "volume": 25,
     "volatility": 25,
 }
 MIN_SCORE_TO_TRADE = 78
 
 # ──────────────────────────────────────────────
-# RISK MANAGEMENT
+# RISK (UNCHANGED)
 # ──────────────────────────────────────────────
-RISK_PER_TRADE_PCT  = 0.01    # 1% max risk per trade
-MAX_DAILY_LOSS_PCT  = 0.02    # -2% → stop all trading
+RISK_PER_TRADE_PCT  = 0.01
+MAX_DAILY_LOSS_PCT  = 0.02
 MAX_TRADES_PER_DAY  = 21
 TAKE_PROFIT_R_MIN   = 1.5
 TAKE_PROFIT_R_MAX   = 3.0
-TRAILING_STOP_AFTER = 1.0     # activate trailing after +1R
+TRAILING_STOP_AFTER = 1.0
 MAX_CONSECUTIVE_LOSSES = 2
 
 # ──────────────────────────────────────────────
-# TRADE HOLDING TIME (minutes)
+# HOLDING TIME (UNCHANGED)
 # ──────────────────────────────────────────────
 HOLD_FAST_MIN    = 1
 HOLD_FAST_MAX    = 10
@@ -98,37 +97,35 @@ HOLD_INTRADAY_MIN = 30
 HOLD_INTRADAY_MAX = 120
 
 # ──────────────────────────────────────────────
-# API RATE LIMITS
+# 🔥 FIXED API PERFORMANCE SETTINGS
 # ──────────────────────────────────────────────
-TWELVE_DATA_RPM       = 144   # requests per minute
-BATCH_SIZE_TWELVE     = 8     # symbols per batch request
-SCAN_INTERVAL_SECONDS = 120   # scan every 2 minutes
+
+TWELVE_DATA_RPM   = 120   # ⬅️ أهم تعديل (بدل 144 = أمان ضد burst)
+BATCH_SIZE_TWELVE = 5     # ⬅️ تقليل الضغط بدون خسارة التحليل
+SCAN_INTERVAL_SECONDS = 120
 
 # ──────────────────────────────────────────────
-# TRADING HOURS (ET)
+# TRADING HOURS
 # ──────────────────────────────────────────────
 MARKET_OPEN_ET  = "09:30"
 MARKET_CLOSE_ET = "16:00"
-NO_TRADE_AFTER  = "15:30"   # no new positions in last 30 min
+NO_TRADE_AFTER  = "15:30"
 
 # ──────────────────────────────────────────────
 # PATHS
 # ──────────────────────────────────────────────
-LOG_DIR        = "logs"
-BACKTEST_DIR   = "backtest_results"
-STATE_FILE     = "logs/system_state.json"
+LOG_DIR      = "logs"
+BACKTEST_DIR = "backtest_results"
+STATE_FILE   = "logs/system_state.json"
 
-# Trading sessions
-PRE_MARKET_START_ET  = "04:35"
-PRE_MARKET_END_ET    = "09:29"
-MARKET_OPEN_ET       = "09:30"
-NO_TRADE_AFTER       = "15:30"
+# ──────────────────────────────────────────────
+# SESSION SETTINGS
+# ──────────────────────────────────────────────
+PRE_MARKET_START_ET = "04:35"
+PRE_MARKET_END_ET   = "09:29"
 
-# Limits per session
 MAX_TRADES_PRE_MARKET  = 3
-MAX_TRADES_OPEN_MARKET = 18   # حسب الحد الكلي عندك
+MAX_TRADES_OPEN_MARKET = 18
 
-# Score per session
-MIN_SCORE_PRE_MARKET   = 88
-MIN_SCORE_OPEN_MARKET  = 78
-
+MIN_SCORE_PRE_MARKET  = 88
+MIN_SCORE_OPEN_MARKET = 78
