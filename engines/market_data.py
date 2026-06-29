@@ -21,12 +21,12 @@ from config.settings import (
 logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────
-# GLOBAL THROTTLE (FIXED)
+# GLOBAL THROTTLE
 # ──────────────────────────────────────────────
+
 _request_lock = threading.Lock()
 _last_request_time = 0
 
-# safe for 144 RPM (with buffer)
 MIN_INTERVAL = 0.6  
 
 
@@ -41,12 +41,13 @@ def throttle_requests():
             time.sleep(MIN_INTERVAL - diff)
 
         _last_request_time = time.time()
-        time.sleep(0.05)  # ⭐ إضافة صغيرة تمنع burst المفاجئ
+        time.sleep(0.05)
 
 
 # ──────────────────────────────────────────────
-# Rate Limiter (soft protection)
+# RATE LIMITER
 # ──────────────────────────────────────────────
+
 class RateLimiter:
     def __init__(self, max_per_minute: int):
         self.max_per_minute = max_per_minute
@@ -69,8 +70,9 @@ _twelve_limiter = RateLimiter(TWELVE_DATA_RPM)
 
 
 # ──────────────────────────────────────────────
-# API CALL CORE (FIXED SAFE FLOW)
+# API CALL
 # ──────────────────────────────────────────────
+
 def fetch_batch_candles(symbols: List[str], interval: str, outputsize: int = 50):
     if not TWELVE_DATA_API_KEY:
         logger.error("TWELVE_DATA_API_KEY not set")
@@ -93,25 +95,20 @@ def fetch_batch_candles(symbols: List[str], interval: str, outputsize: int = 50)
 
     try:
         resp = requests.get(url, params=params, timeout=15)
-        time.sleep(0.15)
 
-        # ❗ FIX: handle 429 cleanly without retry storm
-if resp.status_code == 429:
-    logger.warning("429 hit → backing off safely")
+        # ✅ FIXED 429 HANDLING (correct indentation)
+        if resp.status_code == 429:
+            logger.warning("429 hit → backing off safely")
+            time.sleep(2)
+            return {}
 
-    # 🔥 backoff ذكي
-    time.sleep(2)
-    return {}
-   
-
-        resp.raise_for_status()
         data = resp.json()
 
     except Exception as e:
         logger.error(f"Twelve Data error for {symbol_str}: {e}")
         return {}
 
-    result = {}
+    result: Dict[str, pd.DataFrame] = {}
 
     if len(symbols) == 1:
         sym = symbols[0]
@@ -130,6 +127,7 @@ if resp.status_code == 429:
 # ──────────────────────────────────────────────
 # PARSER
 # ──────────────────────────────────────────────
+
 def _parse_twelve_values(values: list) -> pd.DataFrame:
     df = pd.DataFrame(values)
     df["datetime"] = pd.to_datetime(df["datetime"])
@@ -143,8 +141,9 @@ def _parse_twelve_values(values: list) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────
-# MULTI-TIMEFRAME LOADER (NO STRATEGY CHANGE)
+# MULTI-TIMEFRAME LOADER
 # ──────────────────────────────────────────────
+
 def load_all_timeframes(symbols: List[str]) -> Dict[str, Dict[str, pd.DataFrame]]:
     all_data = {s: {} for s in symbols}
 
@@ -153,31 +152,28 @@ def load_all_timeframes(symbols: List[str]) -> Dict[str, Dict[str, pd.DataFrame]
         for i in range(0, len(symbols), BATCH_SIZE_TWELVE)
     ]
 
-    # IMPORTANT FIX:
-    # add small spacing between timeframe bursts
     for tf_index, (tf_key, tf_interval) in enumerate(TIMEFRAMES.items()):
 
         outputsize = CANDLE_COUNT.get(tf_interval, 50)
 
-        for b_index, batch in enumerate(batches):
+        for batch in batches:
 
             fetched = fetch_batch_candles(batch, tf_interval, outputsize)
 
             for sym, df in fetched.items():
                 all_data[sym][tf_interval] = df
 
-            # 🔥 prevent burst between batches (CRITICAL FIX)
             time.sleep(0.15)
 
-        # 🔥 prevent burst between timeframes (VERY IMPORTANT)
         time.sleep(0.4)
 
     return all_data
 
 
 # ──────────────────────────────────────────────
-# FINNHUB (UNCHANGED BUT SAFE)
+# FINNHUB
 # ──────────────────────────────────────────────
+
 def get_finnhub_movers():
     if not FINNHUB_API_KEY:
         return {"gainers": [], "losers": []}
@@ -186,7 +182,7 @@ def get_finnhub_movers():
         url = "https://finnhub.io/api/v1/stock/market-status"
         params = {"exchange": "US", "token": FINNHUB_API_KEY}
 
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, timeout=10)
         data = resp.json()
 
         return {
@@ -205,8 +201,9 @@ def is_market_open() -> bool:
 
 
 # ──────────────────────────────────────────────
-# PRICE (SAFE)
+# PRICE
 # ──────────────────────────────────────────────
+
 def get_current_price(symbol: str) -> Optional[float]:
     if not TWELVE_DATA_API_KEY:
         return None
@@ -217,7 +214,7 @@ def get_current_price(symbol: str) -> Optional[float]:
     params = {"symbol": symbol, "apikey": TWELVE_DATA_API_KEY}
 
     try:
-        resp = requests.get(url, params=params, timeout=8)
+        resp = requests.get(url, timeout=8)
 
         if resp.status_code == 429:
             time.sleep(1.2)
