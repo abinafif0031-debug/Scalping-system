@@ -171,17 +171,22 @@ class RiskManager:
     # STATUS
     # ──────────────────────────────
 
-    def get_status(self) -> dict:
-        self.state.reset_if_new_day()
+   def get_status(self) -> dict:
+    self.state.reset_if_new_day()
 
-        return {
-            "date": self.state.date,
-            "trades_taken": self.state.trades_taken,
-            "pre_market_trades": self.state.pre_market_trades,
-            "open_market_trades": self.state.open_market_trades,
-            "remaining": MAX_TRADES_PER_DAY - self.state.trades_taken,
-            "pnl": f"{self.state.daily_pnl_pct:.2%}",
-            "losses": self.state.consecutive_losses,
-            "halted": self.state.trading_halted,
-            "reason": self.state.halt_reason,
-        }
+    return {
+        "date": self.state.date,
+        "trades_taken": self.state.trades_taken,
+        "pre_market_trades": self.state.pre_market_trades,
+        "open_market_trades": self.state.open_market_trades,
+        "trades_remaining": MAX_TRADES_PER_DAY - self.state.trades_taken,
+        "daily_pnl_pct": f"{self.state.daily_pnl_pct:.2%}",
+        "consecutive_losses": self.state.consecutive_losses,
+
+        # 🔥 FIX REQUIRED KEYS (for notifier)
+        "trading_allowed": not self.state.trading_halted,
+        "halt_reason": self.state.halt_reason,
+
+        # optional safety
+        "trading_halted": self.state.trading_halted,
+    }
