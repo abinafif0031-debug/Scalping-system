@@ -106,7 +106,7 @@ def run_scan(risk_manager: RiskManager):
         batch = STOCK_UNIVERSE[i:i + 10]
 
         try:
-            all_tf_data = load_all_timeframes(batch, mode="scan")
+            all_tf_data = load_all_timeframes(batch)
         except Exception as e:
             logger.error(f"Data fetch error: {e}")
             continue
