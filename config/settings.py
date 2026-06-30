@@ -121,7 +121,7 @@ HOLD_INTRADAY_MAX = 120
 # ──────────────────────────────────────────────
 TWELVE_DATA_RPM       = 144
 BATCH_SIZE_TWELVE     = 8
-SCAN_INTERVAL_SECONDS = 120
+SCAN_INTERVAL_SECONDS = 180
 
 # ──────────────────────────────────────────────
 # PATHS
