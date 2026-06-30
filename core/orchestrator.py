@@ -1,137 +1,96 @@
 """
 MAIN ORCHESTRATOR
-- Scans stock universe every 2 minutes
-- Batches API calls safely under rate limits
-- Applies full pipeline: data → indicators → score → AI filter → telegram
+- Pre-market: 3 trades max, score >= 88, starts 8:00 AM ET
+- Open market: 13 trades max, score >= 78, 9:30 AM–3:30 PM ET
+- Batches API calls to stay under rate limits
 """
 
 import logging
 import time
 from datetime import datetime, time as dtime
 import pytz
-import os
 
 from config.settings import (
     STOCK_UNIVERSE, SCAN_INTERVAL_SECONDS,
-    TIMEFRAMES,
-    MAX_TRADES_PRE_MARKET, MAX_TRADES_OPEN_MARKET,
-    MIN_SCORE_PRE_MARKET, MIN_SCORE_OPEN_MARKET
+    BATCH_SIZE_TWELVE, TIMEFRAMES,
+    MIN_SCORE_PRE_MARKET, MIN_SCORE_OPEN_MARKET,
 )
-
 from engines.market_data import load_all_timeframes
 from signals.scorer import analyze_symbol
 from signals.ai_filter import ai_filter_signal
 from risk.manager import RiskManager
 from telegram.notifier import (
-    send_signal, send_system_status,
-    send_alert, send_startup_message,
-    send_market_closed
+    send_signal, send_system_status, send_alert,
+    send_startup_message, send_market_closed
 )
-
-# ─────────────────────────────
-# LOGGING
-# ─────────────────────────────
-
-BASE_DIR = "/app"
-LOG_DIR = os.path.join(BASE_DIR, "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
-LOG_FILE = os.path.join(LOG_DIR, "system.log")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE, mode="a"),
+        logging.FileHandler("logs/system.log", mode="a"),
     ],
 )
-
 logger = logging.getLogger(__name__)
 
 ET = pytz.timezone("America/New_York")
 
 
-# ─────────────────────────────
-# SESSION
-# ─────────────────────────────
-
-def is_trading_time() -> bool:
-    now_et = datetime.now(ET).time()
-    return dtime(4, 0) <= now_et <= dtime(20, 0)
-
+# ──────────────────────────────────────────────
+# Session detection
+# ──────────────────────────────────────────────
 
 def get_session() -> str:
+    """
+    Returns:
+        "pre"    → 8:00 AM – 9:29 AM ET
+        "open"   → 9:30 AM – 3:30 PM ET
+        "closed" → everything else
+    """
     now_et = datetime.now(ET).time()
-
     if dtime(8, 0) <= now_et < dtime(9, 30):
         return "pre"
-
     if dtime(9, 30) <= now_et <= dtime(15, 30):
         return "open"
-
     return "closed"
 
 
-# ─────────────────────────────
-# SCAN ENGINE (FIXED)
-# ─────────────────────────────
+# ──────────────────────────────────────────────
+# Main scan
+# ──────────────────────────────────────────────
 
-def run_scan(risk_manager: RiskManager):
+def run_scan(risk_manager: RiskManager, session: str):
+    """One full scan of the stock universe."""
 
-    session = get_session()
+    # Min score depends on session
+    min_score = MIN_SCORE_PRE_MARKET if session == "pre" else MIN_SCORE_OPEN_MARKET
 
-    if session == "closed":
-        logger.info("Market closed — scan skipped")
-        return
-
-    # session limits
-    if session == "pre":
-        if risk_manager.state.pre_market_trades >= MAX_TRADES_PRE_MARKET:
-            logger.info("Pre-market limit reached")
-            return
-        min_score = MIN_SCORE_PRE_MARKET
-    else:
-        if risk_manager.state.open_market_trades >= MAX_TRADES_OPEN_MARKET:
-            logger.info("Open market limit reached")
-            return
-        min_score = MIN_SCORE_OPEN_MARKET
-
-    can_trade, reason = risk_manager.can_trade()
+    can_trade, reason = risk_manager.can_trade(session)
     if not can_trade:
         logger.info(f"Scan skipped — {reason}")
         return
 
-    logger.info(f"Starting scan of {len(STOCK_UNIVERSE)} symbols...")
+    logger.info(f"[{session.upper()}] Scanning {len(STOCK_UNIVERSE)} symbols | min_score={min_score}")
     signals_sent = 0
 
-    # ─────────────────────────────
-    # MAIN LOOP
-    # ─────────────────────────────
-    for i in range(0, len(STOCK_UNIVERSE), 10):
-
-        batch = STOCK_UNIVERSE[i:i + 10]
+    for i in range(0, len(STOCK_UNIVERSE), BATCH_SIZE_TWELVE):
+        batch = STOCK_UNIVERSE[i: i + BATCH_SIZE_TWELVE]
 
         try:
             all_tf_data = load_all_timeframes(batch)
         except Exception as e:
-            logger.error(f"Data fetch error: {e}")
-            time.sleep(1)  # 🔥 safe cooldown
+            logger.error(f"Data fetch error for batch {batch}: {e}")
             continue
 
-        # 🔥 small pause between batches (CRITICAL FIX for 429)
-        time.sleep(0.25)
-
         for symbol in batch:
-
             tf_data = all_tf_data.get(symbol, {})
 
-            primary_df = tf_data.get(TIMEFRAMES["primary"])
-            if primary_df is None or getattr(primary_df, "empty", True):
+            if not tf_data.get(TIMEFRAMES["primary"]):
                 continue
 
             try:
-                signal = analyze_symbol(symbol, tf_data)
+                signal = analyze_symbol(symbol, tf_data, min_score=min_score)
             except Exception as e:
                 logger.error(f"Analysis error {symbol}: {e}")
                 continue
@@ -139,72 +98,78 @@ def run_scan(risk_manager: RiskManager):
             if signal is None:
                 continue
 
-            logger.info(
-                f"Signal: {symbol} {signal.direction} score={signal.confidence:.1f}"
-            )
+            logger.info(f"Signal found: {symbol} {signal.direction} score={signal.confidence:.1f}")
 
-            # AI filter
+            # AI Filter
             approved, ai_reason = ai_filter_signal(signal)
             if not approved:
+                logger.info(f"AI rejected {symbol}: {ai_reason}")
                 continue
 
-            # risk check
-            can_trade, reason = risk_manager.can_trade()
+            # Re-check risk gate before sending
+            can_trade, reason = risk_manager.can_trade(session)
             if not can_trade:
+                logger.info(f"Risk gate: {reason}")
                 break
 
-            # send signal
-            if send_signal(signal, ai_reason):
-                risk_manager.register_trade()
+            # Send to Telegram
+            sent = send_signal(signal, ai_reason, session=session)
+            if sent:
+                risk_manager.register_trade(session)
                 signals_sent += 1
+                logger.info(f"✅ Signal sent: {symbol} {signal.direction} [{session.upper()}]")
 
-            # re-check risk
-            can_trade, _ = risk_manager.can_trade()
+            can_trade, _ = risk_manager.can_trade(session)
             if not can_trade:
                 break
 
-    logger.info(f"Scan complete — {signals_sent} signals sent")
+        can_trade, _ = risk_manager.can_trade(session)
+        if not can_trade:
+            break
+
+    logger.info(f"Scan complete — {signals_sent} signals sent [{session.upper()}]")
 
 
-# ─────────────────────────────
-# MAIN LOOP
-# ─────────────────────────────
+# ──────────────────────────────────────────────
+# Main loop
+# ──────────────────────────────────────────────
 
 def main():
+    import os
+    os.makedirs("logs", exist_ok=True)
 
-    os.makedirs("/app/logs", exist_ok=True)
-
-    risk_manager = RiskManager()
+    risk_manager  = RiskManager()
     send_startup_message()
-
     logger.info("=== Intraday Scalping System STARTED ===")
 
-    market_was_open = False
+    last_session = "closed"
 
     while True:
         try:
+            session = get_session()
 
-            if is_trading_time():
-
-                if not market_was_open:
-                    logger.info("Market session started (PRE/REG/AFTER)")
-                    market_was_open = True
+            if session != "closed":
+                # Announce session change
+                if session != last_session:
+                    label = "🟡 PRE-MARKET" if session == "pre" else "🟢 MARKET OPEN"
+                    logger.info(f"{label} — scanning begins")
+                    send_alert(f"{label} session started", "INFO")
                     send_system_status(risk_manager.get_status())
+                    last_session = session
 
-                run_scan(risk_manager)
+                run_scan(risk_manager, session)
 
             else:
-                if market_was_open:
-                    logger.info("Market closed")
-                    market_was_open = False
+                if last_session != "closed":
+                    logger.info("Market closed — going to standby")
                     send_market_closed()
+                    last_session = "closed"
 
             time.sleep(SCAN_INTERVAL_SECONDS)
 
         except KeyboardInterrupt:
-            logger.info("Stopped by user")
+            logger.info("System stopped by user")
             break
-
         except Exception as e:
             logger.error(f"Main loop error: {e}", exc_info=True)
             send_alert(f"Main loop error: {e}", "ERROR")
