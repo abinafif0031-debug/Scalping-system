@@ -5,7 +5,7 @@ SIGNAL SCORING ENGINE (0–100)
 - Volume:     25 pts
 - Volatility: 25 pts
 
-No trade if score < 75.
+Score threshold is passed in per call (varies by session: pre-market vs open market).
 Multi-timeframe confluence required.
 """
 
@@ -16,7 +16,7 @@ import pandas as pd
 
 from signals.indicators import add_indicators, get_latest_bar_stats
 from config.settings import (
-    MIN_SCORE_TO_TRADE, SCORE_WEIGHTS,
+    MIN_SCORE_TO_TRADE,
     HOLD_FAST_MAX, HOLD_SMART_MIN, HOLD_SMART_MAX,
     HOLD_INTRADAY_MIN, HOLD_INTRADAY_MAX,
     TIMEFRAMES
@@ -53,20 +53,20 @@ class ScoreBreakdown:
 
 @dataclass
 class TradeSignal:
-    symbol:          str
-    direction:       str           # "LONG" | "SHORT"
-    entry_price:     float
-    stop_loss:       float
-    take_profit:     float
-    score:           ScoreBreakdown = field(default_factory=ScoreBreakdown)
-    regime:          str = "unknown"
-    timeframe_conf:  str = ""
-    trade_duration:  str = ""
+    symbol:           str
+    direction:        str
+    entry_price:      float
+    stop_loss:        float
+    take_profit:      float
+    score:            ScoreBreakdown = field(default_factory=ScoreBreakdown)
+    regime:           str = "unknown"
+    timeframe_conf:   str = ""
+    trade_duration:   str = ""
     hold_minutes_min: int = 10
     hold_minutes_max: int = 30
-    reason:          str = ""
-    confidence:      float = 0.0
-    valid:           bool = False
+    reason:           str = ""
+    confidence:       float = 0.0
+    valid:            bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -90,15 +90,12 @@ class TradeSignal:
 # ──────────────────────────────────────────────
 
 def detect_regime(df_1h: pd.DataFrame) -> str:
-    """
-    bullish | bearish | sideways
-    Based on EMA slope and price structure on 1H.
-    """
+    """bullish | bearish | sideways"""
     if df_1h is None or len(df_1h) < 15:
         return "unknown"
     df = add_indicators(df_1h)
     last = df.iloc[-1]
-    prev = df.iloc[-min(5, len(df)-1)]  # 5 bars ago
+    prev = df.iloc[-min(5, len(df) - 1)]
 
     ema_trend_up   = float(last["ema_fast"]) > float(prev["ema_fast"])
     ema_trend_down = float(last["ema_fast"]) < float(prev["ema_fast"])
@@ -120,33 +117,30 @@ def detect_regime(df_1h: pd.DataFrame) -> str:
 # ──────────────────────────────────────────────
 
 def _score_trend(stats_5m: dict, stats_15m: dict, regime: str) -> float:
-    """Max 25 pts"""
     score = 0.0
-    if stats_5m.get("ema_bull"):    score += 8
+    if stats_5m.get("ema_bull"):   score += 8
     if stats_5m.get("above_vwap"): score += 7
-    if stats_15m.get("ema_bull"):   score += 5
-    if regime == "bullish":         score += 5
+    if stats_15m.get("ema_bull"):  score += 5
+    if regime == "bullish":        score += 5
     return min(score, 25.0)
 
 
 def _score_momentum(stats_5m: dict, stats_1m: dict) -> float:
-    """Max 25 pts"""
     score = 0.0
     rsi_5m = stats_5m.get("rsi", 50)
     rsi_1m = stats_1m.get("rsi", 50)
 
-    if 50 < rsi_5m < 70:            score += 8
-    elif 45 < rsi_5m <= 50:         score += 3
+    if 50 < rsi_5m < 70:     score += 8
+    elif 45 < rsi_5m <= 50:  score += 3
 
-    if stats_5m.get("macd_bull"):   score += 9
-    if rsi_1m > rsi_5m:             score += 4
+    if stats_5m.get("macd_bull"):    score += 9
+    if rsi_1m > rsi_5m:               score += 4
     if stats_5m.get("ema_cross_up"): score += 4
 
     return min(score, 25.0)
 
 
 def _score_volume(stats_5m: dict, stats_1m: dict) -> float:
-    """Max 25 pts"""
     score = 0.0
     vol_spike = stats_5m.get("vol_spike", 1.0)
     vol_1m    = stats_1m.get("vol_spike", 1.0)
@@ -161,7 +155,6 @@ def _score_volume(stats_5m: dict, stats_1m: dict) -> float:
 
 
 def _score_volatility(stats_5m: dict, entry: float) -> float:
-    """Max 25 pts — ATR within reasonable bounds"""
     score = 0.0
     atr   = stats_5m.get("atr", 0)
     close = stats_5m.get("close", 1)
@@ -181,12 +174,7 @@ def _score_volatility(stats_5m: dict, entry: float) -> float:
 # SL/TP calculation
 # ──────────────────────────────────────────────
 
-def calc_sl_tp(
-    entry: float,
-    atr: float,
-    direction: str,
-    r_ratio: float = 2.0
-) -> Tuple[float, float]:
+def calc_sl_tp(entry: float, atr: float, direction: str, r_ratio: float = 2.0) -> Tuple[float, float]:
     """ATR-based SL, with R:R take profit."""
     sl_distance = atr * 1.5
     if direction == "LONG":
@@ -217,10 +205,13 @@ def select_trade_duration(score: float, macd_hist_increasing: bool) -> Tuple[str
 
 def analyze_symbol(
     symbol: str,
-    tf_data: Dict[str, pd.DataFrame]
+    tf_data: Dict[str, pd.DataFrame],
+    min_score: float = MIN_SCORE_TO_TRADE,
 ) -> Optional[TradeSignal]:
     """
-    Returns a TradeSignal if score >= 75, else None.
+    Returns a TradeSignal if score >= min_score, else None.
+    min_score is passed by the orchestrator and differs by session
+    (pre-market requires a higher score than open market).
     """
     df_1m  = tf_data.get(TIMEFRAMES["entry"])
     df_5m  = tf_data.get(TIMEFRAMES["primary"])
@@ -261,9 +252,10 @@ def analyze_symbol(
         volatility = _score_volatility(stats_5m, stats_5m["close"]),
     )
 
-    if breakdown.total < MIN_SCORE_TO_TRADE:
+    if breakdown.total < min_score:
         return None
 
+    # ── Use LIVE price instead of last closed candle ──
     live_price = get_current_price(symbol)
     entry = live_price if live_price else stats_5m["close"]
     atr   = stats_5m["atr"]
@@ -285,23 +277,23 @@ def analyze_symbol(
     if stats_5m.get("ema_cross_up"): reasons.append("EMA cross")
     if stats_5m.get("above_vwap"):   reasons.append("above VWAP")
     if stats_5m.get("macd_bull"):    reasons.append("MACD bullish")
-    if stats_5m.get("vol_spike", 1) >= 1.5: reasons.append(f"vol spike x{stats_5m['vol_spike']:.1f}")
+    if stats_5m.get("vol_spike", 1) >= 1.5:
+        reasons.append(f"vol spike x{stats_5m['vol_spike']:.1f}")
     reason = " + ".join(reasons) if reasons else "Multi-indicator confluence"
 
-    signal = TradeSignal(
-        symbol          = symbol,
-        direction       = direction,
-        entry_price     = entry,
-        stop_loss       = sl,
-        take_profit     = tp,
-        score           = breakdown,
-        regime          = regime,
-        timeframe_conf  = tf_conf,
-        trade_duration  = duration_label,
-        hold_minutes_min= hold_min,
-        hold_minutes_max= hold_max,
-        reason          = reason,
-        confidence      = breakdown.total,
-        valid           = True,
+    return TradeSignal(
+        symbol           = symbol,
+        direction        = direction,
+        entry_price      = entry,
+        stop_loss        = sl,
+        take_profit      = tp,
+        score            = breakdown,
+        regime           = regime,
+        timeframe_conf   = tf_conf,
+        trade_duration   = duration_label,
+        hold_minutes_min = hold_min,
+        hold_minutes_max = hold_max,
+        reason           = reason,
+        confidence       = breakdown.total,
+        valid            = True,
     )
-    return signal
