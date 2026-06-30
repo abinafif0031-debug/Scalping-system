@@ -90,7 +90,8 @@ def run_scan(risk_manager: RiskManager, session: str):
         for symbol in batch:
             tf_data = all_tf_data.get(symbol, {})
 
-            if not tf_data.get(TIMEFRAMES["primary"]):
+            primary_df = tf_data.get(TIMEFRAMES["primary"])
+            if primary_df is None or primary_df.empty:
                 continue
 
             try:
