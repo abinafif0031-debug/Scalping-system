@@ -19,7 +19,7 @@ def send_message(text: str, parse_mode: str = "HTML") -> bool:
     """Send any message to the configured chat."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logger.warning("Telegram not configured")
-        print(f"[TELEGRAM] {text}")  # fallback to console
+        print(f"[TELEGRAM] {text}")
         return False
     try:
         resp = requests.post(
@@ -34,16 +34,16 @@ def send_message(text: str, parse_mode: str = "HTML") -> bool:
         return False
 
 
-def send_signal(signal: TradeSignal, ai_reason: str = "") -> bool:
+def send_signal(signal: TradeSignal, ai_reason: str = "", session: str = "open") -> bool:
     """Format and send a trade signal."""
     direction_emoji = "🟢 LONG" if signal.direction == "LONG" else "🔴 SHORT"
     regime_emoji    = {"bullish": "📈", "bearish": "📉", "sideways": "➡️"}.get(signal.regime, "❓")
+    session_label   = "🌅 PRE-MARKET" if session == "pre" else "🟢 OPEN MARKET"
 
-    # Score bar visual
     score_bar = _make_score_bar(signal.confidence)
 
     msg = f"""
-⚡ <b>TRADE SIGNAL</b> ⚡
+⚡ <b>TRADE SIGNAL</b> ⚡ [{session_label}]
 ━━━━━━━━━━━━━━━━━━━━
 📌 <b>{signal.symbol}</b> — {direction_emoji}
 
@@ -79,7 +79,8 @@ def send_system_status(status: dict) -> bool:
 📊 <b>SYSTEM STATUS</b>
 ━━━━━━━━━━━━━━━━━━━━
 📅 Date: {status['date']}
-🔄 Trades: {status['trades_taken']}/{status['trades_taken'] + status['trades_remaining']}
+🌅 Pre-market trades: {status.get('pre_market_trades', '0/0')}
+🟢 Open-market trades: {status.get('open_market_trades', '0/0')}
 📈 Daily PnL: {status['daily_pnl_pct']}
 ❌ Consec. Losses: {status['consecutive_losses']}
 🔒 Status: {allowed}
@@ -88,7 +89,6 @@ def send_system_status(status: dict) -> bool:
 
 
 def send_alert(message: str, level: str = "INFO") -> bool:
-    """Send a system alert."""
     emoji = {"INFO": "ℹ️", "WARNING": "⚠️", "ERROR": "🚨"}.get(level, "📢")
     return send_message(f"{emoji} <b>{level}</b>\n{message}")
 
@@ -96,18 +96,14 @@ def send_alert(message: str, level: str = "INFO") -> bool:
 def send_startup_message() -> bool:
     return send_message(
         "🚀 <b>Scalping System ONLINE</b>\n"
-        "Scanning market every 2 minutes.\n"
-        "Signals will appear here automatically."
+        "Pre-market scanning from 8:00 AM ET (max 3 trades, score ≥88).\n"
+        "Open-market scanning from 9:30 AM ET (max 13 trades, score ≥78)."
     )
 
 
 def send_market_closed() -> bool:
     return send_message("🔒 <b>Market closed</b> — System on standby until next session.")
 
-
-# ──────────────────────────────────────────────
-# Helpers
-# ──────────────────────────────────────────────
 
 def _make_score_bar(score: float, width: int = 10) -> str:
     filled = int((score / 100) * width)
