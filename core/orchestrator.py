@@ -6,6 +6,7 @@ MAIN ORCHESTRATOR
 """
 
 import logging
+import os
 import time
 from datetime import datetime, time as dtime
 import pytz
@@ -23,6 +24,9 @@ from telegram.notifier import (
     send_signal, send_system_status, send_alert,
     send_startup_message, send_market_closed
 )
+
+# Ensure logs directory exists BEFORE logging is configured
+os.makedirs("logs", exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
