@@ -119,7 +119,7 @@ HOLD_INTRADAY_MAX = 120
 # ──────────────────────────────────────────────
 # API RATE LIMITS
 # ──────────────────────────────────────────────
-TWELVE_DATA_RPM       = 144
+TWELVE_DATA_RPM       = 120
 BATCH_SIZE_TWELVE     = 8
 SCAN_INTERVAL_SECONDS = 180
 
