@@ -101,7 +101,7 @@ MAX_TRADES_PER_DAY     = MAX_TRADES_PRE_MARKET + MAX_TRADES_OPEN_MARKET  # 16 إ
 # ──────────────────────────────────────────────
 # TRADING HOURS (ET)
 # ──────────────────────────────────────────────
-PRE_MARKET_START_ET = "08:00"   # بداية البري ماركت
+PRE_MARKET_START_ET = "04:30"   # بداية البري ماركت
 PRE_MARKET_END_ET   = "09:29"   # نهاية البري ماركت
 MARKET_OPEN_ET      = "09:30"   # افتتاح السوق
 NO_TRADE_AFTER      = "15:30"   # لا صفقات بعد هذا الوقت
