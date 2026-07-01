@@ -53,7 +53,7 @@ def get_session() -> str:
         "closed" → everything else
     """
     now_et = datetime.now(ET).time()
-    if dtime(8, 0) <= now_et < dtime(9, 30):
+    if dtime(4, 30) <= now_et < dtime(9, 30):
         return "pre"
     if dtime(9, 30) <= now_et <= dtime(15, 30):
         return "open"
