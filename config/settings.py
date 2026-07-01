@@ -94,8 +94,8 @@ TRAILING_STOP_AFTER    = 1.0
 # ──────────────────────────────────────────────
 # TRADE LIMITS PER SESSION
 # ──────────────────────────────────────────────
-MAX_TRADES_PRE_MARKET  = 3    # حد البري ماركت
-MAX_TRADES_OPEN_MARKET = 13   # حد الأوبن ماركت
+MAX_TRADES_PRE_MARKET  = 5    # حد البري ماركت
+MAX_TRADES_OPEN_MARKET = 18   # حد الأوبن ماركت
 MAX_TRADES_PER_DAY     = MAX_TRADES_PRE_MARKET + MAX_TRADES_OPEN_MARKET  # 16 إجمالي
 
 # ──────────────────────────────────────────────
